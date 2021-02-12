@@ -56,11 +56,15 @@ typedef struct
 #pragma pack(pop)
 
 uintptr_t swshwnd;
+
+const uintptr_t curlgeptr = 0x13880D;
+const uintptr_t savlgeptr = 0x1388E4;
+
 const uint8_t callopc = 0xe8;
 const uint8_t nopopc = 0x90;
 const uintptr_t compbuf = 0x47B3A82;
 const uintptr_t teambuf = 0x4785277;
-const uintptr_t curlbuf = 0x4783E34;
+const uintptr_t curlbuf = 0x4783E30;
 const uintptr_t curtbuf = 0x4785277;
 
 const uintptr_t seasyear = 0x19EA14;
@@ -69,6 +73,32 @@ const uintptr_t curseasonno = 0x477B48A;
 
 static bool currentcomp;
 SWSRegs* regs;
+
+uint32_t SaveCurrent(void)
+{
+  char filename[32];
+  SWSDIYInfo* comp = (SWSDIYInfo*)(swshwnd + curlbuf);
+  uint16_t* teamcount = (uint16_t*)(swshwnd + curlbuf + 0x31);
+  SWSTableInfo* table = (SWSTableInfo*)(swshwnd + curlbuf + 0x2b3);
+  uint32_t* yearstart = (uint32_t*)(swshwnd + seasyear);
+  uint16_t* actseason = (uint16_t*)(swshwnd + curseasonno);
+  uint32_t season = (*actseason + *yearstart);
+  CreateDirectory("careerlogs", NULL);
+  sprintf(filename, "careerlogs\\%s_%d.txt", comp->name, season);
+  FILE* f = fopen(filename, "w");
+  fprintf(f, "CompName: %s\n", comp->name);
+  fprintf(f, "Teams: %d\n", *teamcount);
+  for (int i = 0; i < *teamcount; i++)
+  {
+    SWSTeamInfo* team = (SWSTeamInfo*)(swshwnd + teambuf + table[i].offsett);
+    //fprintf(f, "File: %02x, No: %02x, GenNo: %04x, %s\n", team->teamfileno, team->number, team->genswosno, team->name);
+    fprintf(f, "%s;%d;%d;%d;%d;%d;%d;%d\n", team->name, table[i].matches, 
+    table[i].wins, table[i].draws, table[i].lost, table[i].goals_for, table[i].goals_again, table[i].points);
+  }
+  //MessageBoxA(NULL, "Stop To Test", "SWSCar", MB_OK | MB_ICONINFORMATION);
+  fclose(f);
+  return regs->D[7];
+}
 
 uint16_t SaveLge(void)
 {
@@ -84,7 +114,6 @@ uint16_t SaveLge(void)
   FILE* f = fopen(filename, "w");
   fprintf(f, "CompName: %s\n", comp->name);
   fprintf(f, "Teams: %d\n", *teamcount);
-  fprintf(f, "Current Season: %d\n", season);
   for (int i = 0; i < *teamcount; i++)
   {
     SWSTeamInfo* team = (SWSTeamInfo*)(swshwnd + teambuf + table[i].offsett);
@@ -101,21 +130,26 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 {
 	if (reason == DLL_PROCESS_ATTACH)
 	{
-    FILE* f = fopen("___log.txt", "w");
     swshwnd = (uintptr_t)GetModuleHandle(NULL);
-		uintptr_t adr = swshwnd + 0x1388E4;
     regs = (SWSRegs*)(0x4795DA7 + swshwnd);
-    fprintf(f, "Procedure Adr: %08x\n", adr);
-    fprintf(f, "Register Adr: %08x\n", regs);
     DWORD dwOrginalProtect;
 		DWORD dwNewProtect = PAGE_EXECUTE_READWRITE;
-		VirtualProtect((LPVOID)adr, 6, dwNewProtect, &dwOrginalProtect);
+    // curcar
+    uintptr_t adr = swshwnd + curlgeptr;
+    VirtualProtect((LPVOID)adr, 6, dwNewProtect, &dwOrginalProtect);
     memcpy((void*)adr, &callopc, 1);
     uint32_t rel = ((uintptr_t)&SaveLge) - (adr + 5);
 		memcpy((void*)(adr+1), &rel,  4);
 		memcpy((void*)(adr+5), &nopopc, 1);
     VirtualProtect((LPVOID)adr, 6, dwOrginalProtect, &dwNewProtect);
-    fclose(f);
+    // savcar
+    adr = swshwnd + savlgeptr;
+		VirtualProtect((LPVOID)adr, 6, dwNewProtect, &dwOrginalProtect);
+    memcpy((void*)adr, &callopc, 1);
+    rel = ((uintptr_t)&SaveLge) - (adr + 5);
+		memcpy((void*)(adr+1), &rel,  4);
+		memcpy((void*)(adr+5), &nopopc, 1);
+    VirtualProtect((LPVOID)adr, 6, dwOrginalProtect, &dwNewProtect);
 	}
 	return TRUE;
 }
