@@ -84,10 +84,11 @@ uint32_t SaveCurrent(void)
   uint16_t* actseason = (uint16_t*)(swshwnd + curseasonno);
   uint32_t season = (*actseason + *yearstart);
   CreateDirectory("careerlogs", NULL);
-  sprintf(filename, "careerlogs\\%s_%d.txt", comp->name, season);
+  sprintf(filename, "careerlogs\\%d_%s.txt", season, comp->name);
   FILE* f = fopen(filename, "w");
   fprintf(f, "CompName: %s\n", comp->name);
   fprintf(f, "Teams: %d\n", *teamcount);
+  fprintf(f, "team;p;w;d;l;gf;ga;pts\n");
   for (int i = 0; i < *teamcount; i++)
   {
     SWSTeamInfo* team = (SWSTeamInfo*)(swshwnd + teambuf + table[i].offsett);
@@ -110,10 +111,11 @@ uint16_t SaveLge(void)
   uint16_t* actseason = (uint16_t*)(swshwnd + curseasonno);
   uint32_t season = (*actseason + *yearstart);
   CreateDirectory("careerlogs", NULL);
-  sprintf(filename, "careerlogs\\%s_%d.txt", comp->name, season);
+  sprintf(filename, "careerlogs\\%d_%s.txt", season, comp->name);
   FILE* f = fopen(filename, "w");
   fprintf(f, "CompName: %s\n", comp->name);
   fprintf(f, "Teams: %d\n", *teamcount);
+  fprintf(f, "team;p;w;d;l;gf;ga;pts\n");
   for (int i = 0; i < *teamcount; i++)
   {
     SWSTeamInfo* team = (SWSTeamInfo*)(swshwnd + teambuf + table[i].offsett);
