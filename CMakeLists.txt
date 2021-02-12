@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.1)
 
 set(CMAKE_INSTALL_PREFIX ${PROJECT_BINARY_DIR})
 
-project(SWOS_ASI_TEMP)
+project(SWS_CARSAVER)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/plugins)
 
@@ -37,15 +37,6 @@ include_directories(${CCASISWOS})
 
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
-
-#set(CCASI_TEMPFILES
-#  ${CCSRC}/main.cc
-#  )
-#
-#add_library(carlgesav SHARED ${CCASI_TEMPFILES})
-#set_target_properties(carlgesav PROPERTIES SUFFIX ".asi")
-#target_link_options(carlgesav PRIVATE -static)
-#
 
 set(CCASI_LGESAVFILES
   ${CCSRC}/savcar.c
