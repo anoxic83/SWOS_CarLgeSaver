@@ -57,18 +57,18 @@ typedef struct
 
 uintptr_t swshwnd;
 
-const uintptr_t curlgeptr = 0x13880D;
-const uintptr_t savlgeptr = 0x1388E4;
+const uintptr_t curlgeptr = 0x13980D;
+const uintptr_t savlgeptr = 0x1398E4;
 
 const uint8_t callopc = 0xe8;
 const uint8_t nopopc = 0x90;
-const uintptr_t compbuf = 0x47B3A82;
-const uintptr_t teambuf = 0x4785277;
-const uintptr_t curlbuf = 0x4783E30;
-const uintptr_t curtbuf = 0x4785277;
+const uintptr_t compbuf = 0x47B5A82;
+const uintptr_t teambuf = 0x4787277;
+const uintptr_t curlbuf = 0x4785E30;
+const uintptr_t curtbuf = 0x4787277;
 
-const uintptr_t seasyear = 0x19EA14;
-const uintptr_t curseasonno = 0x477B48A;
+const uintptr_t seasyear = 0x19FA14;
+const uintptr_t curseasonno = 0x477D48A;
 
 
 static bool currentcomp;
@@ -133,7 +133,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 	if (reason == DLL_PROCESS_ATTACH)
 	{
     swshwnd = (uintptr_t)GetModuleHandle(NULL);
-    regs = (SWSRegs*)(0x4795DA7 + swshwnd);
+    regs = (SWSRegs*)(0x4797DA7 + swshwnd);
     DWORD dwOrginalProtect;
 		DWORD dwNewProtect = PAGE_EXECUTE_READWRITE;
     // curcar
