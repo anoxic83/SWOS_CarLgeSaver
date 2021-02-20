@@ -127,6 +127,7 @@ const uintptr_t curseasonno = 0x477D48A;
 
 
 static bool currentcomp;
+static bool careerstart;
 uint8_t* cldiydata;
 uint16_t clteamcount;
 SWSRegs* regs;
@@ -149,24 +150,31 @@ int compdiff(const void* t1, const void* t2)
 void ContinueCareer(void)
 {
   stdproc contcar = (stdproc)(continuecareerproc + swshwnd);
-  MessageBoxA(NULL, "Continue Career", "SavCar.ASI", MB_OK);
+  //MessageBoxA(NULL, "Continue Career", "SavCar.ASI", MB_OK);
   cldiydata = (uint8_t*)malloc(champlgediy_size + (sizeof(SWSTeam) * 32));
   memcpy(cldiydata, champlgediy_data, champlgediy_size);
   clteamcount = 0;
+  careerstart = true;
   contcar();
 }
 
 uint32_t EndCareer(void)
 {
-  char filename[16];
-  uint32_t* yearstart = (uint32_t*)(swshwnd + seasyear);
-  uint16_t* actseason = (uint16_t*)(swshwnd + curseasonno);
-  uint32_t season = (*actseason + *yearstart);
-  sprintf(filename, "%s_%d.DIY", "CLTST", season);
-  FILE* f = fopen(filename, "wb");
-  fwrite(cldiydata, champlgediy_size + (sizeof(SWSTeam) * 32), 1, f);
-  fclose(f);
-  MessageBoxA(NULL, "End Career", "SavCar.ASI", MB_OK);
+  if (careerstart == true)
+  {
+    char filename[16];
+    uint32_t* yearstart = (uint32_t*)(swshwnd + seasyear);
+    uint16_t* actseason = (uint16_t*)(swshwnd + curseasonno);
+    uint32_t season = (*actseason + *yearstart);
+    sprintf(filename, "%s_%d.DIY", "CLTST", season);
+    FILE* f = fopen(filename, "wb");
+    fwrite(cldiydata, champlgediy_size + (sizeof(SWSTeam) * 32), 1, f);
+    fclose(f);
+    //MessageBoxA(NULL, "End Career", "SavCar.ASI", MB_OK);
+    free(cldiydata);
+    cldiydata = NULL;
+    careerstart = false;
+  }
   return regs->A[0];
 }
 
@@ -345,6 +353,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     rel = ((uintptr_t)&EndCareer) - (adr + 5);
 		memcpy((void*)(adr+1), &rel,  4);
     VirtualProtect((LPVOID)adr, 5, dwOrginalProtect, &dwNewProtect);
+    careerstart = false;
 	}
 	return TRUE;
 }
