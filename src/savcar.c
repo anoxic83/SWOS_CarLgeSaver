@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <time.h>
 #include "cldiy.h"
 
 /*
@@ -85,6 +86,24 @@ typedef struct
 
 typedef struct
 {
+  uint8_t playerspos[28];
+  uint32_t unkn;
+  uint8_t nation;
+  uint8_t number;
+  uint16_t swsgenno;
+  uint8_t res0;
+  char name[19];
+  uint8_t tactic;
+  uint8_t division;
+  SWSKit homekit;
+  SWSKit awaykit;
+  char coachname[24];
+  uint8_t playerpos[16];
+  SWSPlayer players[28];
+} SWSCarTeam;
+
+typedef struct
+{
 	int32_t offsett;
 	int16_t matches;
 	int16_t wins;
@@ -125,11 +144,18 @@ const uintptr_t curtbuf = 0x4787277;
 const uintptr_t seasyear = 0x19FA14;
 const uintptr_t curseasonno = 0x477D48A;
 
+const uintptr_t carrerfilebuffer = 0x476FEC6;
+const uintptr_t ownteamincareer = carrerfilebuffer + 0xDB60;
 
 static bool currentcomp;
 static bool careerstart;
 uint8_t* cldiydata;
 uint16_t clteamcount;
+SWSTeam* clteams;
+uint16_t clqualifycount;
+SWSTeam* clqualify;
+bool clownteam;
+bool clownqualify;
 SWSRegs* regs;
 
 
@@ -137,6 +163,13 @@ int comppts(const void* t1, const void* t2)
 {
   SWSTableInfo* tr1 = (SWSTableInfo*)t1;
   SWSTableInfo* tr2 = (SWSTableInfo*)t2;
+  if (tr2->points == tr1->points)
+  {
+    if ((tr2->goals_for - tr2->goals_again) == (tr1->goals_for - tr1->goals_again))
+      return tr2->goals_for - tr1->goals_for;
+    else
+      return (tr2->goals_for - tr2->goals_again) - (tr1->goals_for - tr1->goals_again);
+  }
   return tr2->points - tr1->points;
 }
 
@@ -147,13 +180,25 @@ int compdiff(const void* t1, const void* t2)
   return (tr2->goals_for - tr2->goals_again) - (tr1->goals_for - tr1->goals_again);
 }
 
+int comprand(const void* t1, const void* t2)
+{
+  (void)t1; (void)t2; 
+  return rand() % 2 ? +1 : -1;
+}
+
 void ContinueCareer(void)
 {
   stdproc contcar = (stdproc)(continuecareerproc + swshwnd);
   //MessageBoxA(NULL, "Continue Career", "SavCar.ASI", MB_OK);
   cldiydata = (uint8_t*)malloc(champlgediy_size + (sizeof(SWSTeam) * 32));
+  memset(cldiydata, 0 ,champlgediy_size + (sizeof(SWSTeam) * 32));
   memcpy(cldiydata, champlgediy_data, champlgediy_size);
   clteamcount = 0;
+  clqualifycount = 0;
+  clownteam = false;
+  clownqualify = false;
+  clteams = (SWSTeam*)calloc(32, sizeof(SWSTeam));
+  clqualify = (SWSTeam*)calloc(32, sizeof(SWSTeam));
   careerstart = true;
   contcar();
 }
@@ -162,13 +207,58 @@ uint32_t EndCareer(void)
 {
   if (careerstart == true)
   {
+    srand(time(NULL));
     char filename[16];
     uint32_t* yearstart = (uint32_t*)(swshwnd + seasyear);
     uint16_t* actseason = (uint16_t*)(swshwnd + curseasonno);
     uint32_t season = (*actseason + *yearstart);
+    // Find own team
+    for (int i = 0; i < clteamcount; i++)
+    {
+      if (clteams[i].res0 > 1)
+      {
+        SWSCarTeam* ownteam = (SWSCarTeam*)(ownteamincareer+swshwnd);
+        FILE* q = fopen("!OWN!.DAT", "wb");
+        fwrite((void*)(ownteam), sizeof(SWSCarTeam), 1, q);
+        fclose(q);
+        SWSTeam own;
+        memcpy((void*)&own, (void*)(&ownteam->nation),sizeof(SWSTeam));
+        for (int p = 0; p < 16; p++)
+        {
+          memcpy((void*)(&own.players[p]), (void*)(&ownteam->players[ownteam->playerspos[p]]), sizeof(SWSPlayer));
+          own.playerpos[p] = p;
+        }
+        memcpy((void*)(clteams+i), (void*)(&own), sizeof(SWSTeam));
+        
+      }
+    }
+    // Qualifications
+    int tqualcount = (clownqualify) ? 5 : 6;
+    qsort(clqualify, clqualifycount, sizeof(SWSTeam), comprand);
+    for (int i = 0; i < tqualcount; i++)
+    {
+      //MessageBoxA(NULL, clqualify[i].name, "Qualify", MB_OK);
+      memcpy((void*)(clteams+i+clteamcount), (void*)(clqualify+i), sizeof(SWSTeam));
+    }
+    clteamcount += tqualcount;
+    // Set new seed;
+    int64_t s1 = rand();
+    int64_t s2 = rand();
+    uint64_t seed = (s1 << 32)+s2;
+    memcpy((void*)(cldiydata + 0x141a), &seed, 6);
+    // randomize teams
+    qsort(clteams, 32, sizeof(SWSTeam), comprand);
+    // save teams->{nation, id} to table
+    for (int i = 0; i < 32; i++)
+    {
+      uint16_t ids = (clteams[i].number) << 8 | clteams[i].nation; 
+      memcpy((void*)(cldiydata + 0x99 + (i*2)), (void*)&ids, 2);
+      memcpy((void*)(cldiydata + 0x54c + (i*2)), (void*)&ids, 2);
+    }
     sprintf(filename, "%s_%d.DIY", "CLTST", season);
     FILE* f = fopen(filename, "wb");
-    fwrite(cldiydata, champlgediy_size + (sizeof(SWSTeam) * 32), 1, f);
+    fwrite(cldiydata, champlgediy_size, 1, f);
+    fwrite(clteams, sizeof(SWSTeam), clteamcount, f);
     fclose(f);
     //MessageBoxA(NULL, "End Career", "SavCar.ASI", MB_OK);
     free(cldiydata);
@@ -176,6 +266,86 @@ uint32_t EndCareer(void)
     careerstart = false;
   }
   return regs->A[0];
+}
+
+
+void GetCLDirect(SWSTableInfo* table, int teamcount, bool ownleague)
+{
+  int selectorid = -1;
+  SWSTeam* tteam = (SWSTeam*)(swshwnd + teambuf + table[0].offsett);
+  for (int i =0; i < 43; i++)
+  {
+    if (natcldirect[i].nationid == tteam->nation)
+    {
+      if (tteam->division == 0)
+        selectorid = i;
+    }
+  }
+  int cl = 0;
+  int clend = 0;
+  if (selectorid > 0)
+  {
+    cl = natcldirect[selectorid].startcount;
+    clend = natcldirect[selectorid].startcount + natcldirect[selectorid].teamscount;
+  }
+  for (int i = 0; i < teamcount; i++)
+  {
+    SWSTeam* team = (SWSTeam*)(swshwnd + teambuf + table[i].offsett);
+    if (cl < clend)
+    {
+      //MessageBoxA(NULL, team->name, "Direct",MB_OK);
+      if (ownleague)
+      {
+        if (team->res0 > 1)
+          clownteam = true;
+      }
+      memcpy((void*)(clteams+clteamcount), team, sizeof(SWSTeam));
+      clteamcount++;
+    }
+    cl++;
+  }
+}
+
+void GetCLQualify(SWSTableInfo* table, int teamcount, bool ownleague)
+{
+  int selectorid = -1;
+  SWSTeam* tteam = (SWSTeam*)(swshwnd + teambuf + table[0].offsett);
+  for (int i =0; i < 43; i++)
+  {
+    if (natclqualify[i].nationid == tteam->nation)
+    {
+      if (tteam->division == 0)
+        selectorid = i;
+    }
+  }
+  int cl = 0;
+  int clend = 0;
+  if (selectorid > 0)
+  {
+    cl = natclqualify[selectorid].startcount;
+    clend = natclqualify[selectorid].startcount + natclqualify[selectorid].teamscount;
+  }
+  for (int i = 0; i < teamcount; i++)
+  {
+    SWSTeam* team = (SWSTeam*)(swshwnd + teambuf + table[i].offsett);
+    if (cl < clend)
+    {
+      if (ownleague == true)
+      {
+        if (team->res0 > 1)
+        {
+          clownteam = true;
+          // own team always play in cl
+          memcpy((void*)(clteams+clteamcount), team, sizeof(SWSTeam));
+          clteamcount++;
+          clownqualify = true;
+        }
+      }
+      memcpy((void*)(clqualify+clqualifycount), team, sizeof(SWSTeam));
+      clqualifycount++;
+    }
+    cl++;
+  }
 }
 
 
@@ -191,7 +361,7 @@ uint32_t SaveCurrent(void)
   // Sorting
   SWSTableInfo* table = (SWSTableInfo*)calloc(*teamcount, sizeof(SWSTableInfo));
   memcpy(table, tablex, sizeof(SWSTableInfo)*(*teamcount));
-  qsort(table, *teamcount, sizeof(SWSTableInfo), compdiff);
+  //qsort(table, *teamcount, sizeof(SWSTableInfo), compdiff);
   qsort(table, *teamcount, sizeof(SWSTableInfo), comppts); 
   //
   CreateDirectory("careerlogs", NULL);
@@ -200,40 +370,16 @@ uint32_t SaveCurrent(void)
   fprintf(f, "CompName: %s\n", comp->name);
   fprintf(f, "Teams: %d\n", *teamcount);
   fprintf(f, "team;p;w;d;l;gf;ga;pts\n");
-  // Check Champions League
-  int selectorid = -1;
-  SWSTeam* tteam = (SWSTeam*)(swshwnd + teambuf + table[0].offsett);
-  for (int i =0; i < 43; i++)
-  {
-    if (nationsdta[i].nationid == tteam->nation)
-    {
-      if (tteam->division == 0)
-        selectorid = i;
-    }
-  }
-  int cl = 0;
-  int clend = 0;
-  if (selectorid > 0)
-  {
-    cl = nationsdta[selectorid].startcount;
-    clend = nationsdta[selectorid].startcount + nationsdta[selectorid].teamscount;
-  }
   for (int i = 0; i < *teamcount; i++)
   {
     SWSTeam* team = (SWSTeam*)(swshwnd + teambuf + table[i].offsett);
     //fprintf(f, "File: %02x, No: %02x, GenNo: %04x, %s\n", team->teamfileno, team->number, team->genswosno, team->name);
     fprintf(f, "%s;%d;%d;%d;%d;%d;%d;%d\n", team->name, table[i].matches, 
     table[i].wins, table[i].draws, table[i].lost, table[i].goals_for, table[i].goals_again, table[i].points);
-    if (cl < clend)
-    {
-      memcpy((void*)(cldiydata + 0x1447 + (clteamcount * sizeof(SWSTeam))), team, sizeof(SWSTeam));
-      uint16_t ids = (team->number) << 8 | team->nation; 
-      memcpy((void*)(cldiydata + 0x99 + (clteamcount*2)), (void*)&ids, 2);
-      memcpy((void*)(cldiydata + 0x54c + (clteamcount*2)), (void*)&ids, 2);
-      clteamcount++;
-    }
-    cl++;
   }
+  // Check Champions League Direct
+  GetCLDirect(table, *teamcount, true);
+  GetCLQualify(table, *teamcount, true);
   //MessageBoxA(NULL, "Stop To Test", "SWSCar", MB_OK | MB_ICONINFORMATION);
 
   fclose(f);
@@ -261,56 +407,16 @@ uint16_t SaveLge(void)
   fprintf(f, "CompName: %s\n", comp->name);
   fprintf(f, "Teams: %d\n", *teamcount);
   fprintf(f, "team;p;w;d;l;gf;ga;pts\n");
-  // Check Champions League
-  int selectorid = -1;
-  SWSTeam* tteam = (SWSTeam*)(swshwnd + teambuf + table[0].offsett);
-  /*
-  if (tteam->nation == 8)
-  {
-    char text[64];
-    sprintf(text, "Team to test: %s, Division: %d", tteam->name, tteam->division);
-    MessageBoxA(NULL, text, "TEAMTEST", MB_OK);
-  }
-  */
-  for (int i =0; i < 43; i++)
-  {
-    if (nationsdta[i].nationid == tteam->nation)
-    {
-      if (tteam->division == 0)
-        selectorid = i;
-    }
-  }
-  int cl = 0;
-  int clend = 0;
-  if (selectorid > 0)
-  {
-    cl = nationsdta[selectorid].startcount;
-    clend = nationsdta[selectorid].startcount + nationsdta[selectorid].teamscount;
-  }
-  /*
-  if (tteam->nation == 8)
-  {
-    char text[64];
-    sprintf(text, "England-> SelectorID: %d, Start: %d, End: %d", selectorid, cl, clend);
-    MessageBoxA(NULL, text, "SWSASI", MB_OK);
-  }
-  */
   for (int i = 0; i < *teamcount; i++)
   {
     SWSTeam* team = (SWSTeam*)(swshwnd + teambuf + table[i].offsett);
     //fprintf(f, "File: %02x, No: %02x, GenNo: %04x, %s\n", team->teamfileno, team->number, team->genswosno, team->name);
     fprintf(f, "%s;%d;%d;%d;%d;%d;%d;%d\n", team->name, table[i].matches, 
     table[i].wins, table[i].draws, table[i].lost, table[i].goals_for, table[i].goals_again, table[i].points);
-    if (cl < clend)
-    {
-      memcpy((void*)(cldiydata + 0x1447 + (clteamcount * sizeof(SWSTeam))), team, sizeof(SWSTeam));
-      uint16_t ids = (team->number) << 8 | team->nation;
-      memcpy((void*)(cldiydata + 0x99 + (clteamcount*2)), (void*)&ids, 2);
-      memcpy((void*)(cldiydata + 0x54c + (clteamcount*2)), (void*)&ids, 2);
-      clteamcount++;
-    }
-    cl++;
   }
+  // Check Champions League Direct
+  GetCLDirect(table, *teamcount, false);
+  GetCLQualify(table, *teamcount, false);
   //MessageBoxA(NULL, "Stop To Test", "SWSCar", MB_OK | MB_ICONINFORMATION);
   fclose(f);
   return regs->D[7];
@@ -328,7 +434,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     uintptr_t adr = swshwnd + curlgeptr;
     VirtualProtect((LPVOID)adr, 6, dwNewProtect, &dwOrginalProtect);
     memcpy((void*)adr, &callopc, 1);
-    uint32_t rel = ((uintptr_t)&SaveLge) - (adr + 5);
+    uint32_t rel = ((uintptr_t)&SaveCurrent) - (adr + 5);
 		memcpy((void*)(adr+1), &rel,  4);
 		memcpy((void*)(adr+5), &nopopc, 1);
     VirtualProtect((LPVOID)adr, 6, dwOrginalProtect, &dwNewProtect);
@@ -354,6 +460,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
 		memcpy((void*)(adr+1), &rel,  4);
     VirtualProtect((LPVOID)adr, 5, dwOrginalProtect, &dwNewProtect);
     careerstart = false;
+    srand(time(NULL));
 	}
 	return TRUE;
 }
